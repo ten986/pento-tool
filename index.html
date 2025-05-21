@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>ペントミノツール</title>
+    <style>
+      html {
+        overflow: hidden;
+      }
+      body {
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin: 0;
+        padding: 1rem;
+        overscroll-behavior: none;
+        overflow: hidden;
+        height: 100vh;
+        width: 100vw;
+        position: relative;
+      }
+      #board {
+        position: relative;
+        width: 90%;
+        max-width: 400px;
+        aspect-ratio: 1;
+        display: grid;
+        grid-template-columns: repeat(10, 1fr);
+        grid-template-rows: repeat(10, 1fr);
+        border: 1px solid #ccc;
+      }
+      .cell {
+        background-color: #eee;
+        border: 1px solid #ccc;
+        box-sizing: border-box;
+        width: 100%;
+        height: 100%;
+      }
+      .pentomino {
+        position: absolute;
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        grid-template-rows: repeat(5, 1fr);
+        width: 200%;
+        height: 200%;
+        pointer-events: none;
+        touch-action: none;
+        transform-origin: center center;
+      }
+      .pentomino.active {
+        outline: none;
+      }
+      /* .pentomino.active::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        border: 2px solid red;
+        pointer-events: none;
+        box-sizing: border-box;
+      } */
+      .block {
+        border: 1px solid #000;
+        background-color: #66f;
+        pointer-events: auto;
+        touch-action: none;
+        width: 100%;
+        height: 100%;
+      }
+      .toolbar {
+        position: fixed;
+        bottom: 1rem;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #fff;
+        border: 1px solid #000;
+        display: flex;
+        gap: 10px;
+        padding: 8px;
+        z-index: 10000000000;
+      }
+      button {
+        cursor: pointer;
+        font-size: 1rem;
+        width: 80px;
+        height: 50px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="board"></div>
+    <div class="toolbar">
+      <button id="rotateBtn">回転</button>
+      <button id="flipBtn">左右反転</button>
+      <button id="flipYBtn">上下反転</button>
+    </div>
+
+    <script>
+      const board = document.getElementById("board");
+      const boardSize = 10;
+      const pentominoes = [];
+      let activePiece = null;
+
+      for (let i = 0; i < boardSize * boardSize; i++) {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        board.appendChild(cell);
+      }
+
+      const colors = [
+        "#66f",
+        "#6f6",
+        "#f66",
+        "#fc0",
+        "#0cf",
+        "#f6f",
+        "#ccc",
+        "#0c6",
+        "#60f",
+        "#c60",
+        "#c0f",
+        "#0ff",
+      ];
+      const shapes = {
+        I: [
+          [0, 2],
+          [1, 2],
+          [2, 2],
+          [3, 2],
+          [4, 2],
+        ],
+        L: [
+          [2, 0],
+          [2, 1],
+          [2, 2],
+          [2, 3],
+          [3, 3],
+        ],
+        N: [
+          [2, 0],
+          [2, 1],
+          [3, 1],
+          [3, 2],
+          [3, 3],
+        ],
+        P: [
+          [2, 1],
+          [3, 1],
+          [2, 2],
+          [3, 2],
+          [2, 3],
+        ],
+        T: [
+          [1, 1],
+          [2, 1],
+          [3, 1],
+          [2, 2],
+          [2, 3],
+        ],
+        U: [
+          [1, 2],
+          [1, 3],
+          [2, 3],
+          [3, 3],
+          [3, 2],
+        ],
+        V: [
+          [1, 1],
+          [1, 2],
+          [1, 3],
+          [2, 3],
+          [3, 3],
+        ],
+        W: [
+          [1, 1],
+          [1, 2],
+          [2, 2],
+          [2, 3],
+          [3, 3],
+        ],
+        X: [
+          [2, 1],
+          [1, 2],
+          [2, 2],
+          [3, 2],
+          [2, 3],
+        ],
+        Y: [
+          [2, 0],
+          [2, 1],
+          [2, 2],
+          [2, 3],
+          [1, 2],
+        ],
+        Z: [
+          [1, 1],
+          [2, 1],
+          [2, 2],
+          [2, 3],
+          [3, 3],
+        ],
+        F: [
+          [2, 1],
+          [1, 2],
+          [2, 2],
+          [2, 3],
+          [3, 3],
+        ],
+      };
+
+      function setActive(piece) {
+        if (activePiece) activePiece.classList.remove("active");
+        activePiece = piece;
+        activePiece.classList.add("active");
+        activePiece.style.zIndex = `${++setActive.zIndexCounter}`;
+      }
+      setActive.zIndexCounter = 1000;
+
+      function createPentomino(name, index) {
+        const piece = document.createElement("div");
+        piece.className = "pentomino";
+        piece.dataset.name = name;
+        piece.dataset.rotation = 0;
+        piece.dataset.flipped = 0;
+        piece.dataset.yFlipped = 0;
+
+        // 6列2行に整列配置
+        const layout = [
+          [0, 8], // I
+          [5, 10], // L
+          [6, 10], // N
+          [2, 13], // P
+          [2, 9], // T
+          [4, 13], // U
+          [-1, 10], // V
+          [-1, 13], // W
+          [1, 13], // X
+          [4, 10], // Y
+          [6, 13], // Z
+          [1, 10], // F
+        ];
+        const [gx, gy] = layout[index];
+        piece.dataset.gridX = gx;
+        piece.dataset.gridY = gy;
+
+        const color = colors[index % colors.length];
+        shapes[name].forEach(([x, y]) => {
+          const block = document.createElement("div");
+          block.className = "block";
+          block.style.gridColumn = x + 1;
+          block.style.gridRow = y + 1;
+          block.style.backgroundColor = color;
+          block.addEventListener("click", (e) => {
+            e.stopPropagation();
+            setActive(piece);
+          });
+          piece.appendChild(block);
+        });
+
+        piece.addEventListener("mousedown", (e) => {
+          setActive(piece);
+        });
+
+        piece.addEventListener("touchstart", (e) => {
+          setActive(piece);
+        });
+
+        updatePiecePosition(piece);
+        piece.style.cursor = "move";
+        makeDraggable(piece);
+        board.appendChild(piece);
+        pentominoes.push(piece);
+      }
+
+      function updatePiecePosition(el) {
+        const gridX = parseInt(el.dataset.gridX);
+        const gridY = parseInt(el.dataset.gridY);
+        el.style.left = `calc(${(gridX / boardSize) * 100}%)`;
+        el.style.top = `calc(${(gridY / boardSize) * 100}%)`;
+        el.style.width = `calc(${(5 / boardSize) * 100}%)`;
+        el.style.height = `calc(${(5 / boardSize) * 100}%)`;
+      }
+
+      function makeDraggable(el) {
+        let offsetX, offsetY;
+
+        const start = (e) => {
+          const isTouch = e.type.startsWith("touch");
+          const evt = isTouch ? e.touches[0] : e;
+          if (evt.target.className !== "block") return;
+
+          el.style.zIndex = `${Date.now()}`;
+          setActive(el);
+
+          const boardRect = board.getBoundingClientRect();
+          const elRect = el.getBoundingClientRect();
+          const elLeft = elRect.left - boardRect.left;
+          const elTop = elRect.top - boardRect.top;
+          const mouseX = evt.clientX - boardRect.left;
+          const mouseY = evt.clientY - boardRect.top;
+          offsetX = mouseX - elLeft;
+          offsetY = mouseY - elTop;
+
+          const move = (e) => {
+            const evt = isTouch ? e.touches[0] || e.changedTouches[0] : e;
+            el.style.left = `${evt.clientX - offsetX - boardRect.left}px`;
+            el.style.top = `${evt.clientY - offsetY - boardRect.top}px`;
+          };
+
+          const up = (e) => {
+            const evt = isTouch ? e.changedTouches?.[0] || e.touches?.[0] : e;
+            const boardRect = board.getBoundingClientRect();
+            const cellWidth = boardRect.width / boardSize;
+            const cellHeight = boardRect.height / boardSize;
+
+            const dropLeft = evt.clientX - offsetX;
+            const dropTop = evt.clientY - offsetY;
+
+            const snappedX = Math.round(
+              (dropLeft - boardRect.left) / cellWidth
+            );
+            const snappedY = Math.round((dropTop - boardRect.top) / cellHeight);
+
+            el.dataset.gridX = snappedX;
+            el.dataset.gridY = snappedY;
+
+            updatePiecePosition(el);
+
+            document.removeEventListener(
+              isTouch ? "touchmove" : "mousemove",
+              move
+            );
+            document.removeEventListener(isTouch ? "touchend" : "mouseup", up);
+          };
+
+          document.addEventListener(isTouch ? "touchmove" : "mousemove", move);
+          document.addEventListener(isTouch ? "touchend" : "mouseup", up);
+        };
+
+        el.addEventListener("mousedown", start);
+        el.addEventListener("touchstart", start);
+      }
+
+      function updateTransform(el) {
+        const rotation = el.dataset.rotation;
+        const flip = el.dataset.flipped == 1 ? -1 : 1;
+        const yFlip = el.dataset.yFlipped == 1 ? -1 : 1;
+        el.style.transform = `scaleX(${flip}) scaleY(${yFlip}) rotate(${rotation}deg)`;
+      }
+
+      document.getElementById("rotateBtn").addEventListener("click", () => {
+        if (!activePiece) return;
+        activePiece.dataset.rotation =
+          (+activePiece.dataset.rotation + 90) % 360;
+        updateTransform(activePiece);
+      });
+
+      document.getElementById("flipBtn").addEventListener("click", () => {
+        if (!activePiece) return;
+        activePiece.dataset.flipped = activePiece.dataset.flipped == 0 ? 1 : 0;
+        updateTransform(activePiece);
+      });
+
+      document.getElementById("flipYBtn").addEventListener("click", () => {
+        if (!activePiece) return;
+        activePiece.dataset.yFlipped = activePiece.dataset.yFlipped == 0 ? 1 : 0;
+        updateTransform(activePiece);
+      });
+
+      Object.keys(shapes).forEach((k, i) => createPentomino(k, i));
+    </script>
+  </body>
+</html>
